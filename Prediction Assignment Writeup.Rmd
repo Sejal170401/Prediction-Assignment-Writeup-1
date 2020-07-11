@@ -1,0 +1,178 @@
+---
+title: "Prediction Assignment Writeup"
+author: "Ankit Kumar Verma"
+date: "10/07/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,warning=FALSE,message = FALSE)
+```
+
+# Background
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: [http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har]( http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har) (see the section on the Weight Lifting Exercise Dataset).
+
+# Data
+
+The **training data** for this project are available here:  
+[https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv)
+
+The **test data** are available here:  
+[https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv)
+
+The data for this project come from this **source**:  
+[http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har](http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har)
+
+# Data Loading
+
+## Loading required libraries
+```{r}
+library(knitr)
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(rattle)
+library(randomForest)
+library(corrplot)
+set.seed(301)
+```
+
+## Loading the data
+```{r}
+TrainData <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+TestData  <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+TrainFile<-"pml-traininig.csv"
+TestFile<-"pml-testing.csv"
+download.file(TrainData,destfile = TrainFile)
+download.file(TestData,destfile = TestFile)
+training <- read.csv(TrainFile)
+testing  <- read.csv(TestFile)
+```
+
+## Partioning the Data Set (70:30)
+
+```{r}
+inTrain  <- createDataPartition(training$classe, p=0.7, list=FALSE)
+TrainSet <- training[inTrain, ]
+TestSet  <- training[-inTrain, ]
+```
+
+## Checking Dataset Properties
+```{r}
+dim(TrainSet)
+dim(TestSet)
+```
+## Cleaning the DataSet
+Removing Near Zero Variance variables:
+```{r}
+NZV <- nearZeroVar(TrainSet)
+TrainSet <- TrainSet[, -NZV]
+TestSet  <- TestSet[, -NZV]
+```
+Removing NA's:
+```{r}
+AllNA    <- sapply(TrainSet, function(x) mean(is.na(x))) > 0.95
+TrainSet <- TrainSet[, AllNA==FALSE]
+TestSet  <- TestSet[, AllNA==FALSE]
+```
+Removing 1st 5 columns containing only variable names:
+```{r}
+TrainSet <- TrainSet[, -(1:5)]
+TestSet  <- TestSet[, -(1:5)]
+```
+Checking Dataset Properties
+```{r}
+dim(TrainSet)
+dim(TestSet)
+```
+The number of variables is now down to 54
+
+# Correlation Analysis
+Drawing the correlation Plot, we have:
+```{r}
+corMatrix <- cor(TrainSet[, -54])
+corrplot(corMatrix, order = "FPC", method = "color", type = "lower", 
+         tl.cex = 0.8, tl.col = rgb(0, 0, 0))
+```
+Highly correlated variable are darker in color. Next Step is Building of Prediction Model 
+
+#  Building of Prediction Model 
+We are using three methods:  Random Forests and Generalized Boosted Model for developing the prediction model.
+
+## Random Forest
+
+Fitting the model:
+```{r}
+set.seed(301)
+controlRF <- trainControl(method="cv", number=3, verboseIter=FALSE)
+modFitRandForest <- train(classe ~ ., data=TrainSet, method="rf",
+                          trControl=controlRF)
+modFitRandForest$finalModel
+```
+Predicting on the model
+
+```{r}
+predictRandForest <- predict(modFitRandForest, newdata=TestSet)
+confMatRandForest <- confusionMatrix(predictRandForest, TestSet$classe)
+confMatRandForest
+```
+
+Plotting the Test results
+```{r}
+plot(confMatRandForest$table, col = confMatRandForest$byClass, 
+     main = paste("Random Forest - Accuracy =",
+                  round(confMatRandForest$overall['Accuracy'], 4)))
+```
+
+## Generalised Boosted Models
+
+Fitting the model:
+```{r}
+set.seed(301)
+controlGBM <- trainControl(method = "repeatedcv", number = 5, repeats = 1)
+modFitGBM  <- train(classe ~ ., data=TrainSet, method = "gbm",
+                    trControl = controlGBM, verbose = FALSE)
+modFitGBM$finalModel
+```
+
+Checking the model prediction:
+```{r}
+predictGBM <- predict(modFitGBM, newdata=TestSet)
+confMatGBM <- confusionMatrix(predictGBM, TestSet$classe)
+confMatGBM
+```
+Plotting the results:
+
+```{r}
+plot(confMatGBM$table, col = confMatGBM$byClass, 
+     main = paste("GBM - Accuracy =", round(confMatGBM$overall['Accuracy'], 4)))
+```
+## Applying the model to the data
+
+The accuracy of Random Forest and GBM are: 0.9968 and 0.9884 respectively. 
+
+Hence, applying random forest to the testing dataset,
+
+```{r}
+predictTEST <- predict(modFitRandForest, newdata=testing)
+predictTEST
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
